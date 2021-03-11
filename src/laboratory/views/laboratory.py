@@ -1,13 +1,12 @@
 # encoding: utf-8
-
 from django import forms
 from django.conf.urls import url
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User
+from django.db.models import query
 from django.db.models.query_utils import Q
-from django.shortcuts import redirect, get_object_or_404, render
-from django.template.loader import render_to_string
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.urls.base import reverse
 from django.utils.decorators import method_decorator
@@ -16,95 +15,20 @@ from django.views.generic import CreateView, UpdateView
 from django.views.generic.edit import DeleteView
 from django.views.generic.edit import FormView
 from django.views.generic.list import ListView
-from django_ajax.decorators import ajax
-
-from laboratory.decorators import user_group_perms
-from laboratory.forms import UserCreate, UserSearchForm, LaboratoryCreate, H_CodeForm
-from laboratory.models import Laboratory, OrganizationStructure
+from laboratory.forms import LaboratoryCreate, H_CodeForm
+from laboratory.models import Laboratory, OrganizationStructure, OrganizationUserManagement, Profile
 from laboratory.utils import get_user_laboratories
 from laboratory.views.laboratory_utils import filter_by_user_and_hcode
+from laboratory.decorators import has_lab_assigned
 
 
-def render_admins_lab(request, object_list, lab, message=None):
-    return {
-        'inner-fragments': {
-            '#admin_lab_users': render_to_string(
-                'ajax/lab_admins_list.html',
-                context={
-                    'object_list': object_list,
-                    'lab': lab,
-                    'message': message
-                },
-                request=request,
-            )
-        }
-    }
-
-
-@ajax
-def create_admins_user(request, pk):
-    lab = get_object_or_404(Laboratory, pk=pk)
-    message = None
-    if request.method == 'POST':
-        form = UserCreate(request.POST)
-        if form.is_valid():
-            user = User.objects.create_user(
-                form.cleaned_data['username'],
-                form.cleaned_data['email'],
-                form.cleaned_data['password']
-            )
-            user.first_name = form.cleaned_data['first_name']
-            user.last_name = form.cleaned_data['last_name']
-            user.save()
-            lab.lab_admins.add()
-            message = _("User added successfully")
-        else:
-            message = _("Something went wrong")
-    else:
-        message = _("Sorry, wrong method")
-    return render_admins_lab(request, lab.lab_admins.all(), lab, message=message)
-
-
-@ajax
-def get_create_admis_user(request, pk):
-    lab = get_object_or_404(Laboratory, pk=pk)
-    usersearchform = UserSearchForm()
-    usercreateform = UserCreate()
-    return {
-        'inner-fragments': {
-            '#admin_lab_users': render_to_string(
-                'ajax/lab_admins_create.html',
-                context={
-                    'usersearchform': usersearchform,
-                    'usercreateform': usercreateform,
-                    'lab': lab
-                },
-                request=request,
-            )
-        }
-    }
-
-
-@ajax
-def del_admins_user(request, pk, pk_user):
-    lab = get_object_or_404(Laboratory, pk=pk)
-    lab.lab_admins.filter(pk=pk_user).delete()
-    return render_admins_lab(request, lab.laboratorists.all(), lab)
-
-
-@ajax
-def admin_users(request, pk):
-    lab = get_object_or_404(Laboratory, pk=pk)
-    user_org = OrganizationStructure.os_manager.filter_user(request.user)
-
-    return render_admins_lab(request, lab.laboratorists.all(), lab)
-
-
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.change_laboratory'), name='dispatch')
+@method_decorator(has_lab_assigned(lab_pk='pk'), name='dispatch')
+@method_decorator(permission_required('laboratory.change_laboratory'), name='dispatch')
 class LaboratoryEdit(UpdateView):
     model = Laboratory
     template_name = 'laboratory/edit.html'
+    lab_pk_field = 'pk'
+
     #fields = ['name', 'phone_number', 'location', 'geolocation']
     form_class = LaboratoryCreate
 
@@ -173,13 +97,13 @@ class SelectLaboratoryForm(forms.Form):
         self.fields['laboratory'].queryset = lab_queryset
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.view_laboratory'), name='dispatch')
+@method_decorator(permission_required('laboratory.view_laboratory'), name='dispatch')
 class SelectLaboratoryView(FormView):
     template_name = 'laboratory/select_lab.html'
     form_class = SelectLaboratoryForm
     number_of_labs = 0
     success_url = '/'
+    lab_pk_field = 'pk'
 
     def get_laboratories(self, user):
         organizations = OrganizationStructure.os_manager.filter_user(user)
@@ -216,8 +140,7 @@ class SelectLaboratoryView(FormView):
         return FormView.get(self, request, *args, **kwargs)
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.add_laboratory'), name='dispatch')
+@method_decorator(permission_required('laboratory.add_laboratory'), name='dispatch')
 class CreateLaboratoryFormView(FormView):
     template_name = 'laboratory/laboratory_create.html'
     form_class = LaboratoryCreate
@@ -240,8 +163,14 @@ class CreateLaboratoryFormView(FormView):
         return context
 
     def form_valid(self, form):
-        form.save()
-        self.object = form.instance
+        self.object = form.save()
+        user = self.request.user
+        admins = User.objects.filter(is_superuser=True)
+        user.profile.laboratories.add(self.object)
+        for admin in admins: 
+            if not hasattr(admin, 'profile'):
+                admin.profile = Profile.objects.create(user=admin)
+            admin.profile.laboratories.add(self.object)
         response = super(CreateLaboratoryFormView, self).form_valid(form)
 
         return response
@@ -250,8 +179,7 @@ class CreateLaboratoryFormView(FormView):
         return reverse('laboratory:rooms_create', kwargs={'lab_pk': self.object.pk})
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.add_laboratory'), name='dispatch')
+@method_decorator(permission_required('laboratory.add_laboratory'), name='dispatch')
 class CreateLaboratoryView(CreateView):
     form_class = LaboratoryCreate
     success_url = '/'
@@ -259,7 +187,7 @@ class CreateLaboratoryView(CreateView):
     def post(self, request, *args, **kwargs):
         user = self.request.user
         form = self.get_form()
-        if user.has_perm('laboratory.add_laboratory'):
+        if request.user.has_perm('laboratory.add_laboratory'):
             if form.is_valid():
                 form.save(user)
                 return redirect(self.success_url)
@@ -271,8 +199,7 @@ class CreateLaboratoryView(CreateView):
             return redirect(self.success_url)
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.delete_laboratory'), name='dispatch')
+@method_decorator(permission_required('laboratory.view_laboratory'), name='dispatch')
 class LaboratoryListView(ListView):
     model = Laboratory
     template_name= 'laboratory/laboratory_list.html'
@@ -280,16 +207,20 @@ class LaboratoryListView(ListView):
     paginate_by = 15
 
     def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.filter(profile__user=self.request.user)
         q = self.request.GET.get('search_fil', '')
-        if q == "":
-            q = None
-        return get_user_laboratories(self.request.user, q)
+        if q != "":
+            queryset = queryset.filter(name__icontains=q) 
+        return queryset   
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.delete_laboratory'), name='dispatch')
+
+@method_decorator(has_lab_assigned(lab_pk='pk'), name='dispatch')
+@method_decorator(permission_required('laboratory.delete_laboratory'), name='dispatch')
 class LaboratoryDeleteView(DeleteView):
     model = Laboratory
     template_name= 'laboratory/laboratory_delete.html'
+    lab_pk_field = 'pk'
 
     def get_success_url(self):
         return  "/"
@@ -299,7 +230,7 @@ class LaboratoryDeleteView(DeleteView):
         context['laboratory'] = self.object.pk
         return context
 
-@method_decorator(login_required, name='dispatch')
+@method_decorator(permission_required('laboratory.do_report'), name='dispatch')
 class HCodeReports(ListView):
     paginate_by = 15
     template_name = 'laboratory/h_code_report.html'

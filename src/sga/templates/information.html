@@ -84,12 +84,22 @@
                 </div>
             </div>
             <!--============================================================================================================-->
+            <!--=========================================Logo and Barcode==========================================================-->
+
+            <div class="form-group">
+                <label><span class="label label-info">3</span>&nbsp;{% trans 'Logo' %}</label><br>
+                <input type="file" id="logo" name="logo">
+            </div>
+            <div class="form-group">
+                <label><span class="label label-info">5</span>&nbsp;{% trans 'Barcode' %}</label><br>
+                <input type="file" id="barcode" name="barcode">
+            </div>
+            <!--============================================================================================================-->
         </div>
         <div class="col-sm-6">
-            <!--============================================================================================================-->
             <!--=========================================Comercial information==============================================-->
-            <div class="form-group">
-                <label><span class="label label-info">3</span>&nbsp;{% trans 'Commercial Information' %}</label>
+           <div class="form-group">
+                <label><span class="label label-info">5</span>&nbsp;{% trans 'Commercial Information' %}</label>
                 <div class="form-group shadow-textarea">
                     <textarea name="commercial_information" class="form-control
                         z-depth-1" id="commercial_information" rows="2"
@@ -97,12 +107,10 @@
                 </div>
             </div>
             <!--============================================================================================================-->
-        </div>
-        <div class="col-sm-6">
-            <!--============================================================================================================-->
+
             <!--=========================================Recipient==========================================================-->
             <div class="form-group">
-                <label><span class="label label-info">5</span>&nbsp;{% trans 'Recipient' %}</label><br>
+                <label><span class="label label-info">6</span>&nbsp;{% trans 'Recipient' %}</label><br>
                 <!--<a>{{ recipients }}</a>-->
                 <select name="recipients" id="recipients" class="form-control" onchange="changePlaceHolder(this)">
                     <option disabled selected hidden>{% trans 'Name - Height x Width' %}</option>
@@ -123,20 +131,17 @@
             <!--Add new recipient-->
             <label>{% trans 'Did you find the recipient?' %}</label>&nbsp;&nbsp;<a href="{% url 'admin:sga_recipientsize_add' %}"><u>{% trans 'Create it Here!' %}</u></a><br>
             <!--============================================================================================================-->
-        </div>
-        <div class="col-sm-6" style="margin-top:1%">
-            <!--============================================================================================================-->
-            <!--=========================================Recipient==========================================================-->
-            <div class="form-group">
-                <label><span class="label label-info">4</span>&nbsp;{% trans 'Logo and Bar Code' %}</label><br>
-                <br>
+           <div class="form-group">
+                <label><span class="label label-info">7</span>&nbsp;{% trans 'Template' %}</label><br>
                 <!--<a>{{ recipients }}</a>-->
-                <input type="file" id="logo" name="logo">
-                <br>
-                <input type="file" id="barcode" name="barcode">
+                <select name="templates" id="templates" class="form-control" onchange="changePlaceHolder(this)">
+                    <option disabled selected hidden>{% trans 'Name - Height x Width' %}</option></select>
             </div>
-
+            <div class="error"><lead>No hay plantillas de la medida solicitada</lead></div>
+            <!--Add new recipient-->
+            <label>{% trans 'Did you find the template?' %}</label>&nbsp;&nbsp;<a href="{% url 'sga:editor' %}"><u>{% trans 'Create it Here!' %}</u></a><br>
             <!--============================================================================================================-->
+
         </div>
 
     </div>

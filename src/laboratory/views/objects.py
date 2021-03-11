@@ -8,28 +8,34 @@ Free as freedom will be 26/8/2016
 
 from django import forms
 from django.conf.urls import url
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import permission_required
 from django.db.models.query_utils import Q
 from django.forms import ModelForm
+from django.shortcuts import render
 from django.urls.base import reverse_lazy
 from django.utils.decorators import method_decorator
-
-from laboratory.decorators import user_group_perms, view_user_group_perms
-# from laboratory.decorators import check_lab_permissions, user_lab_perms
+from django.utils.translation import ugettext_lazy as _
+from djgentelella.forms.forms import CustomForm
+from djgentelella.widgets import core as genwidget
+from laboratory.models import Laboratory, BlockedListNotification
 from laboratory.models import Object, SustanceCharacteristics
 from laboratory.utils import filter_laboratorist_profile
 from laboratory.views.djgeneric import CreateView, DeleteView, UpdateView, ListView
-from django.utils.translation import ugettext_lazy as _
+from laboratory.decorators import has_lab_assigned
+
 
 class ObjectView(object):
     model = Object
     template_name_base = "laboratory/objectview"
 
     def __init__(self):
-        @method_decorator(login_required, name='dispatch')
-        @method_decorator(user_group_perms(perm='laboratory.add_object'), name='dispatch')
+        @method_decorator(has_lab_assigned(), name='dispatch')
+        @method_decorator(permission_required('laboratory.add_object'), name='dispatch')
         class ObjectCreateView(CreateView):
-
+            permission_required = ('laboratory.add_object',)
+            
             def get_success_url(self, *args, **kwargs):
                 redirect = reverse_lazy('laboratory:objectview_list', args=(
                     self.lab,)) + "?type_id=" + self.object.type
@@ -40,14 +46,14 @@ class ObjectView(object):
                 kwargs['request'] = self.request
                 return kwargs
 
-        self.create = view_user_group_perms(login_required(ObjectCreateView.as_view(
+        self.create = ObjectCreateView.as_view(
             model=self.model,
             form_class=ObjectForm,
-            template_name=self.template_name_base + "_form.html"
-        )), 'laboratory.add_object')
+            template_name=self.template_name_base + "_form.html",
+        )
 
-        @method_decorator(login_required, name='dispatch')
-        @method_decorator(user_group_perms(perm='laboratory.change_object'), name='dispatch')
+        @method_decorator(has_lab_assigned(), name='dispatch')
+        @method_decorator(permission_required('laboratory.change_object'), name='dispatch')
         class ObjectUpdateView(UpdateView):
 
             def get_success_url(self):
@@ -61,28 +67,29 @@ class ObjectView(object):
                 return kwargs
 
 
-        self.edit = view_user_group_perms(login_required(ObjectUpdateView.as_view(
+        self.edit = ObjectUpdateView.as_view(
             model=self.model,
             form_class=ObjectForm,
             template_name=self.template_name_base + "_form.html"
-        )), 'laboratory.change_object')
+        )
 
-        @method_decorator(login_required, name='dispatch')
-        @method_decorator(user_group_perms(perm='laboratory.delete_object'), name='dispatch')
+        @method_decorator(has_lab_assigned(), name='dispatch')
+        @method_decorator(permission_required('laboratory.delete_object'), name='dispatch')
         class ObjectDeleteView(DeleteView):
 
             def get_success_url(self):
                 return reverse_lazy('laboratory:objectview_list',
                                     args=(self.lab,))
 
-        self.delete = view_user_group_perms(login_required(ObjectDeleteView.as_view(
+        self.delete = ObjectDeleteView.as_view(
             model=self.model,
             success_url="/",
             template_name=self.template_name_base + "_delete.html"
-        )), 'laboratory.delete_object')
+        )
 
-        @method_decorator(login_required, name='dispatch')
-        @method_decorator(user_group_perms(perm='laboratory.view_object'), name='dispatch')    
+        
+        @method_decorator(has_lab_assigned(), name='dispatch')
+        @method_decorator(permission_required('laboratory.view_object'), name='dispatch')    
         class ObjectListView(ListView):
 
             def get_queryset(self):
@@ -115,12 +122,12 @@ class ObjectView(object):
                 context['type_id'] = self.type_id or ''
                 return context
 
-        self.list = view_user_group_perms(login_required(ObjectListView.as_view(
+        self.list = ObjectListView.as_view(
             model=self.model,
             paginate_by=10,
             ordering=['code'],
             template_name=self.template_name_base + "_list.html"
-        )), 'laboratory.view_object')
+        )
 
     def get_urls(self):
         return [
@@ -136,18 +143,13 @@ class ObjectView(object):
         ]
 
 
-
-def create_reactive(request):
-    pass
-
-
 class SustanceCharacteristicsForm(ModelForm):
     class Meta:
         model = SustanceCharacteristics
         fields = '__all__'
 
 
-class ObjectForm(ModelForm):
+class ObjectForm(CustomForm,ModelForm):
     required_css_class = ''
 
     def __init__(self, *args, **kwargs):
@@ -189,3 +191,23 @@ class ObjectForm(ModelForm):
     class Meta:
         model = Object
         fields = '__all__'
+        widgets = {
+            'features': genwidget.SelectMultiple,
+            'laboratory': genwidget.SelectMultiple,
+            'code': genwidget.TextInput,
+            'name': genwidget.TextInput,
+            'synonym':  genwidget.TextInput,
+            'is_public': genwidget.YesNoInput,
+            'description': genwidget.Textarea
+        }
+
+
+@login_required
+@has_lab_assigned()
+def block_notifications(request, lab_pk, obj_pk):
+    laboratory = Laboratory.objects.get(pk=lab_pk)
+    object = Object.objects.get(pk=obj_pk)
+    BlockedListNotification.objects.get_or_create(
+        laboratory=laboratory, object=object, user=request.user)
+    messages.success(request, "You won't be recieving notifications of this object anymore.")
+    return render(request, 'laboratory/block_object_notification.html')

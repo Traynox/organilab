@@ -26,7 +26,7 @@ SECRET_KEY = os.getenv('SECRET_KEY',
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True')
-FULL_APPS = True
+DEBUG_TOOLBAR = False
 
 if os.getenv('ALLOWED_HOSTS', ''):
     ALLOWED_HOSTS = [c for c in os.getenv('ALLOWED_HOSTS', '').split(',')]
@@ -52,7 +52,6 @@ INSTALLED_APPS = [
     "bootstrapform",
     "djreservation",
     "celery",
-    'ajax_select',
     'location_field',
     'mptt',
     'constance',
@@ -74,7 +73,14 @@ INSTALLED_APPS = [
     'djgentelella.blog',
     'chunked_upload',
     'api.apps.ApiConfig',
+    'ajax_select',
+    'reservations_management',
+    'django_celery_beat',
+    'paypal.standard.ipn',
 ]
+
+if DEBUG_TOOLBAR:
+    INSTALLED_APPS += ['debug_toolbar',]
 
 
 RECAPTCHA_PRIVATE_KEY = os.getenv(
@@ -90,9 +96,14 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    #  'debug_toolbar.middleware.DebugToolbarMiddleware',
+]
+if DEBUG_TOOLBAR:
+    MIDDLEWARE += ['debug_toolbar.middleware.DebugToolbarMiddleware',]
+
+MIDDLEWARE += [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'djreservation.middleware.ReservationMiddleware'
+    'djreservation.middleware.ReservationMiddleware',
+    'authentication.middleware.ProfileMiddleware'
 ]
 
 ROOT_URLCONF = 'organilab.urls'
@@ -296,3 +307,23 @@ MARKITUP_FILTER = ('markdown.markdown', {'safe_mode': True})
 MARKITUP_SET = 'markitup/sets/markdown/'
 JQUERY_URL = None
 
+DATE_INPUT_FORMATS = [
+    '%d/%m/%Y', '%Y-%m-%d', '%d/%m/%y'
+]
+
+DATE_FORMAT = 'd/m/Y'
+
+DATETIME_INPUT_FORMATS = [
+    '%m/%d/%Y %H:%M %p',
+    '%Y/%m/%d %H:%M %A',
+    '%Y-%m-%d %H:%M %p',
+    '%Y-%m-%d %H:%M',
+    '%m/%d/%Y %H:%M',
+    '%d/%m/%Y %H:%M',
+    '%d/%m/%y %H:%M'
+]
+
+#Paypal configurations
+PAYPAL_TEST = True
+PAYPAL_RECEIVER_EMAIL = 'paypal@solvosoft.com'
+MY_PAYPAL_HOST="http://localhost:8000/"

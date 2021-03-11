@@ -34,13 +34,15 @@ from djgentelella.urls import urlpatterns as urls_djgentelela
 
 from sga import urls as sga_urls
 from risk_management import urls as risk_urls
+from sga.views import index_organilab, donate, donate_success
 
-
+from reservations_management.urls import urlpatterns as reservation_management_urls
+from reservations_management.api.urls import urlpatterns as reservations_management_api_urlpatterns
 
 urlpatterns = urls_djgentelela + auth_urls + [
     url(r'^ckeditor/', include('ckeditor_uploader.urls')),
-    url(r'^$', RedirectView.as_view(url=reverse_lazy('msds:organilab_tree')), name='index'),
-
+    url(r'^$', index_organilab, name='index'),
+    url(r'^tutorials/', RedirectView.as_view(url=reverse_lazy('msds:organilab_tree')), name='tutorials'),
     url(r'^', include((laboratory_urls,'laboratory'), namespace='laboratory')),
     url(r'^', include((api_urls,'api'), namespace='api')),
     url(r'^ajax_select/', include(ajax_select_urls)),
@@ -52,10 +54,19 @@ urlpatterns = urls_djgentelela + auth_urls + [
     url(r'^api/reactive/name/', ReactiveMolecularFormulaAPIView.as_view(), name="api_molecularname"),
     url(r'^markitup/', include('markitup.urls')),
     url(r'^admin/', admin.site.urls),
+    url(r'^donate$', donate, name='donate'),
+    url(r'^donate_success$', donate_success, name='donate_success'),
 ]
 
+paypal_urls = [
+    url(r'^paypal/', include('paypal.standard.ipn.urls')),
+]
+
+urlpatterns += paypal_urls
 urlpatterns += djreservation_urls.urlpatterns
 urlpatterns += academic_urls
+urlpatterns += reservation_management_urls
+urlpatterns += reservations_management_api_urlpatterns
 
 if settings.DEBUG:
     from django.conf.urls.static import static
@@ -63,8 +74,8 @@ if settings.DEBUG:
                           document_root=settings.MEDIA_ROOT)
 
 
-# if settings.DEBUG:
-#    import debug_toolbar
-#    urlpatterns = [
-#        url(r'^__debug__/', include(debug_toolbar.urls)),
-#    ] + urlpatterns
+if settings.DEBUG_TOOLBAR:
+   import debug_toolbar
+   urlpatterns = [
+       url(r'^__debug__/', include(debug_toolbar.urls)),
+   ] + urlpatterns

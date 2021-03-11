@@ -4,7 +4,7 @@ from django.utils.translation import ugettext_lazy as _
 from tagging.registry import register
 from tagging.fields import TagField
 from mptt.models import MPTTModel, TreeForeignKey
-
+from django.contrib.auth.models import User
 
 class WarningClass(MPTTModel):
     TYPE = (
@@ -14,7 +14,7 @@ class WarningClass(MPTTModel):
     )
     name = models.CharField(max_length=150, verbose_name=_("Name"))
     danger_type = models.CharField(
-        max_length=25,  default="category", choices=TYPE,
+        max_length=25, default="category", choices=TYPE,
         verbose_name=_("Danger type"))
 
     parent = TreeForeignKey('self',
@@ -25,9 +25,9 @@ class WarningClass(MPTTModel):
         name = self.name
 
         if len(name) < 3 and self.parent:
-            name = self.parent.name + " > "+name
+            name = self.parent.name + " > " + name
         elif WarningClass.objects.filter(name=self.name).count() > 1:
-            name = self.parent.name + " > "+name
+            name = self.parent.name + " > " + name
 
         """
         if self.danger_type == 'class':
@@ -40,6 +40,7 @@ class WarningClass(MPTTModel):
     class Meta:
         verbose_name = _('Warning Class')
         verbose_name_plural = _('Warning Classes')
+
 
 # Pictograma de precaución
 
@@ -54,6 +55,7 @@ class WarningWord(models.Model):
     class Meta:
         verbose_name = _('Warning Word')
         verbose_name_plural = _('Warning Words')
+
 
 # Indicación de peligro
 
@@ -70,6 +72,7 @@ class Pictogram(models.Model):
         verbose_name = _('Pictogram')
         verbose_name_plural = _('Pictograms')
 
+
 # palabras de advertencia
 
 
@@ -82,7 +85,7 @@ class PrudenceAdvice(models.Model):
         verbose_name=_("Help for prudence advice"))
 
     def __str__(self):
-        return self.code+": "+self.name
+        return self.code + ": " + self.name
 
     class Meta:
         verbose_name = _('Prudence Advice')
@@ -110,10 +113,16 @@ class DangerIndication(models.Model):
     def __str__(self):
         return "(%s) %s" % (self.code, self.description)
 
-
     class Meta:
         verbose_name = _('Danger Indication')
         verbose_name_plural = _('Indication of Danger')
+
+
+class DangerPrudence(models.Model):
+    danger_indication = models.ManyToManyField(
+        DangerIndication, verbose_name=_("Danger indication"))
+    prudence_advice = models.ManyToManyField(
+        PrudenceAdvice, verbose_name=_("Prudence advice"))
 
 
 class Component(models.Model):
@@ -128,10 +137,11 @@ class Component(models.Model):
         verbose_name_plural = _('Components')
 
 
-
 class Substance(models.Model):
     comercial_name = models.CharField(max_length=250,
                                       verbose_name=_("Comercial name"))
+    uipa_name= models.CharField(max_length=250, default="",
+                                verbose_name=_("UIPA name"))
     components = models.ManyToManyField(
         Component, verbose_name=_("Components"))
     danger_indications = models.ManyToManyField(
@@ -160,6 +170,8 @@ class Substance(models.Model):
 
 
 register(Substance)
+
+
 # build information
 
 
@@ -175,6 +187,7 @@ class BuilderInformation(models.Model):
         verbose_name = _('Builder Information')
         verbose_name_plural = _('Information of Builders')
 
+
 # labels
 
 
@@ -185,19 +198,19 @@ class RecipientSize(models.Model):
         ('inch', _('inch')),
     )
     name = models.CharField(max_length=150, verbose_name=_("Name"))
-    height = models.FloatField(default=10,  verbose_name=_("Height"))
+    height = models.FloatField(default=10, verbose_name=_("Height"))
     height_unit = models.CharField(max_length=5, default="cm",
                                    verbose_name=_("Height Unit"),
                                    choices=CHOICES)
-    width = models.FloatField(default=10,  verbose_name=_("Width"))
+    width = models.FloatField(default=10, verbose_name=_("Width"))
     width_unit = models.CharField(max_length=5, default="cm",
                                   verbose_name=_("Width Unit"),
                                   choices=CHOICES)
 
     def __str__(self):
         return 'name={0} | height={1}, height_unit={2}, width={3}, width_unit={4}'.format(self.name, self.height,
-                                                                                         self.height_unit, self.width,
-                                                                                         self.width_unit)
+                                                                                          self.height_unit, self.width,
+                                                                                          self.width_unit)
 
     class Meta:
         verbose_name = _('Recipient Size')
@@ -228,7 +241,7 @@ class TemplateSGA(models.Model):
     name = models.CharField(max_length=150, verbose_name=_("Name"))
     recipient_size = models.ForeignKey(RecipientSize, verbose_name=_("Recipient Size"), on_delete=models.CASCADE)
     json_representation = models.TextField()
-    community_share = models.BooleanField(default=True,  verbose_name=_("Share with community"))
+    community_share = models.BooleanField(default=True, verbose_name=_("Share with community"))
     preview = models.TextField(help_text="B64 preview image")
 
     def __str__(self):
@@ -237,3 +250,34 @@ class TemplateSGA(models.Model):
     class Meta:
         verbose_name = _('Template SGA')
         verbose_name_plural = _('Templates SGA')
+
+class PersonalTemplateSGA(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=150, verbose_name=_("Name"))
+    json_representation = models.TextField()
+    recipient_size = models.ForeignKey(RecipientSize, verbose_name=_("Recipient Size"), on_delete=models.CASCADE)
+
+    def __str__(self):
+        recipient=RecipientSize.objects.get(pk=self.recipient_size.pk)
+        return self.name+" Height {0}{1} x Width {2}{3}".format(recipient.height,recipient.height_unit,recipient.width,recipient.width_unit)
+
+    class Meta:
+        verbose_name = _('Personal Template SGA')
+        verbose_name_plural = _('Personal Templates SGA')
+
+
+class Donation(models.Model):
+    name = models.CharField(max_length=200, verbose_name=_("Name"))
+    email = models.CharField(max_length=100, verbose_name=_("Email"))
+    amount = models.CharField(max_length=10, verbose_name=_("Amount"))
+    details = models.TextField(max_length=255, verbose_name=_("Details"))
+    is_donator = models.BooleanField(default=True, verbose_name=_("Add me to the donators list"))
+    is_paid = models.BooleanField(default=False, verbose_name=_("Is paid?"))
+    donation_date = models.DateTimeField(auto_now_add=True, verbose_name=_('Donation date'))
+
+    class Meta:
+        verbose_name = _("Donation")
+        verbose_name_plural = _("Donations")
+
+    def __str__(self):
+        return f'{self.name}: ${self.amount}'

@@ -1,13 +1,13 @@
 import ast
 import json
 
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User, Group, Permission
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import ugettext_lazy as _
-from mptt.models import MPTTModel, TreeForeignKey
 from location_field.models.plain import PlainLocationField
-from laboratory.validators import validate_molecular_formula
+from mptt.models import MPTTModel, TreeForeignKey
+
 from . import catalog
 
 
@@ -23,6 +23,7 @@ class CLInventory(models.Model):
     def __str__(self):
         return '%s' % self.name
 
+
 class Catalog(models.Model):
     key = models.CharField(max_length=150)
     description = models.CharField(max_length=500)
@@ -30,8 +31,9 @@ class Catalog(models.Model):
     def __str__(self):
         return self.description
 
+
 class ObjectFeatures(models.Model):
-    name = models.CharField(_('Name'), max_length=250,  unique=True)
+    name = models.CharField(_('Name'), max_length=250, unique=True)
     description = models.TextField(_('Description'))
 
     class Meta:
@@ -40,6 +42,7 @@ class ObjectFeatures(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Object(models.Model):
     REACTIVE = '0'
@@ -61,7 +64,7 @@ class Object(models.Model):
     features = models.ManyToManyField(ObjectFeatures, verbose_name=_("Object features"))
 
     model = models.CharField(_('Model'), max_length=50, null=True, blank=True)
-    serie = models.CharField(_('Serie'),  max_length=50, null=True, blank=True)
+    serie = models.CharField(_('Serie'), max_length=50, null=True, blank=True)
     plaque = models.CharField(
         _('Plaque'), max_length=50, null=True, blank=True)
 
@@ -77,11 +80,15 @@ class Object(models.Model):
             return self.sustancecharacteristics.is_precursor
         return False
 
+    @property
+    def cas_code(self):
+        if hasattr(self, 'sustancecharacteristics') and self.sustancecharacteristics:
+            return self.sustancecharacteristics.cas_id_number
+        return False
 
     class Meta:
         verbose_name = _('Object')
         verbose_name_plural = _('Objects')
-
 
     def __str__(self):
         return '%s %s' % (self.code, self.name,)
@@ -90,25 +97,34 @@ class Object(models.Model):
         self.full_clean()
         return super(Object, self).save(*args, **kwargs)
 
+
 class SustanceCharacteristics(models.Model):
     obj = models.OneToOneField(Object, on_delete=models.CASCADE)
     iarc = catalog.GTForeignKey(Catalog, related_name="gt_iarcrel", on_delete=models.DO_NOTHING,
                                 null=True, blank=True, key_name="key", key_value="IARC")
     imdg = catalog.GTForeignKey(Catalog, related_name="gt_imdg", on_delete=models.DO_NOTHING,
                                 null=True, blank=True, key_name="key", key_value="IDMG")
-    white_organ = catalog.GTManyToManyField(Catalog, related_name="gt_white_organ", key_name="key", key_value="white_organ")
+    white_organ = catalog.GTManyToManyField(Catalog, related_name="gt_white_organ", key_name="key",
+                                            key_value="white_organ", blank=True)
     bioaccumulable = models.NullBooleanField(default=False)
-    molecular_formula = models.CharField(_('Molecular formula'), max_length=255,
-                                         validators=[validate_molecular_formula], null=True, blank=True)
+    molecular_formula = models.CharField(_('Molecular formula'), max_length=255, null=True, blank=True)
     cas_id_number = models.CharField(
         _('Cas ID Number'), max_length=255, null=True, blank=True)
     security_sheet = models.FileField(
         _('Security sheet'), upload_to='security_sheets/', null=True, blank=True)
     is_precursor = models.BooleanField(_('Is precursor'), default=False)
     precursor_type = catalog.GTForeignKey(Catalog, related_name="gt_precursor", on_delete=models.SET_NULL,
-                                null=True, blank=True, key_name="key", key_value="Precursor")
+                                          null=True, blank=True, key_name="key", key_value="Precursor")
 
     h_code = models.ManyToManyField('sga.DangerIndication', verbose_name=_("Danger Indication"), blank=True)
+    valid_molecular_formula = models.BooleanField(default=False)
+    ue_code = catalog.GTManyToManyField(Catalog, related_name="gt_ue", key_name="key",
+                                        key_value="ue_code", blank=True, verbose_name=_('UE codes'))
+    nfpa = catalog.GTManyToManyField(Catalog, related_name="gt_nfpa", key_name="key",
+                                     key_value="nfpa", blank=True, verbose_name=_('NFPA codes'))
+    storage_class = catalog.GTManyToManyField(Catalog, related_name="gt_storage_class", key_name="key",
+                                              key_value="storage_class", blank=True, verbose_name=_('Storage class'))
+    seveso_list = models.BooleanField(verbose_name=_('Is Seveso list III?'), default=False)
 
     class Meta:
         verbose_name = _('Sustance characteristic')
@@ -119,34 +135,30 @@ class ShelfObject(models.Model):
     shelf = models.ForeignKey('Shelf', verbose_name=_("Shelf"), on_delete=models.CASCADE)
     object = models.ForeignKey('Object', verbose_name=_(
         "Equipment or reactive or sustance"), on_delete=models.CASCADE)
-    quantity = models.FloatField(_('Material quantity'))
-    limit_quantity = models.FloatField(_('Limit material quantity'))
+    quantity = models.FloatField(_('Material quantity'), help_text='Use dot like 0.344 on decimal')
+    limit_quantity = models.FloatField(_('Limit material quantity'), help_text='Use dot like 0.344 on decimal')
     measurement_unit = catalog.GTForeignKey(Catalog, related_name="measurementunit", on_delete=models.DO_NOTHING,
-                             verbose_name=_('Measurement unit'), key_name="key", key_value='units')
-
+                                            verbose_name=_('Measurement unit'), key_name="key", key_value='units')
 
     @staticmethod
     def get_units(unit):
         if isinstance(unit, (int, str)):
             unit = Catalog.objects.filter(pk=unit).first() or ''
         return str(unit)
+
     @property
     def limit_reached(self):
         return self.quantity < self.limit_quantity
 
-
     def get_measurement_unit_display(self):
         return str(self.measurement_unit)
-
 
     class Meta:
         verbose_name = _('Shelf object')
         verbose_name_plural = _('Shelf objects')
 
-
     def __str__(self):
         return '%s - %s %s' % (self.object, self.quantity, str(self.measurement_unit))
-
 
 
 class LaboratoryRoom(models.Model):
@@ -160,7 +172,6 @@ class LaboratoryRoom(models.Model):
         return '%s' % (self.name,)
 
 
-
 class Shelf(models.Model):
     furniture = models.ForeignKey('Furniture', verbose_name=_("Furniture"), on_delete=models.CASCADE)
     name = models.CharField(_("Name"), max_length=15, default="nd")
@@ -168,9 +179,8 @@ class Shelf(models.Model):
                                         verbose_name=_("Container shelf"), on_delete=models.CASCADE)
 
     # C space  D drawer
-    type = catalog.GTForeignKey(Catalog, on_delete=models.DO_NOTHING,  verbose_name=_('Type'),
+    type = catalog.GTForeignKey(Catalog, on_delete=models.DO_NOTHING, verbose_name=_('Type'),
                                 key_name="key", key_value='container_type')
-
 
     def get_objects(self):
         return ShelfObject.objects.filter(shelf=self)
@@ -201,12 +211,11 @@ class Shelf(models.Model):
         return '%s %s %s' % (self.furniture, str(self.type), self.name)
 
 
-
 class Furniture(models.Model):
     labroom = models.ForeignKey('LaboratoryRoom', on_delete=models.CASCADE)
     name = models.CharField(_('Name'), max_length=255)
     # old  'F' Cajón   'D' Estante
-    type = catalog.GTForeignKey(Catalog, on_delete=models.DO_NOTHING,  verbose_name=_('Type'),
+    type = catalog.GTForeignKey(Catalog, on_delete=models.DO_NOTHING, verbose_name=_('Type'),
                                 key_name="key", key_value='furniture_type')
 
     dataconfig = models.TextField(_('Data configuration'))
@@ -337,7 +346,6 @@ class OrganizationStructureManager(models.Manager):
         return OrganizationStructure.objects.filter(pk=org_id).get_descendants(include_self=True)
 
 
-
 class OrganizationStructure(MPTTModel):
     name = models.CharField(_('Name'), max_length=255)
 
@@ -350,6 +358,12 @@ class OrganizationStructure(MPTTModel):
     class Meta:
         verbose_name = _('Organization')
         verbose_name_plural = _('Organizations')
+        permissions = (
+            ('add_organizationusermanagement', _('Can add organization user management')),
+            ('change_organizationusermanagement', _('Can change organization user management')),
+            ('delete_organizationusermanagement', _('Can delete organization user management')),
+            ('view_organizationusermanagement', _('Can view organization user management')),
+        )
 
     class MPTTMeta:
         order_insertion_by = ['name', ]
@@ -399,7 +413,6 @@ class Laboratory(models.Model):
     rooms = models.ManyToManyField(
         'LaboratoryRoom', verbose_name=_("Rooms"), blank=True)
 
-
     class Meta:
         verbose_name = _('Laboratory')
         verbose_name_plural = _('Laboratories')
@@ -419,13 +432,16 @@ class Laboratory(models.Model):
 
 
 class Profile(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     phone_number = models.CharField(_('Phone'), default='', max_length=25)
     id_card = models.CharField(_('ID Card'), max_length=100)
     laboratories = models.ManyToManyField(Laboratory, verbose_name=_("Laboratories"), blank=True)
+    job_position = models.CharField(_('Job Position'), max_length=100)
+
 
     def __str__(self):
         return '%s' % (self.user,)
+
 
 class Solution(models.Model):
     name = models.CharField(_('Name'), default='', max_length=255)
@@ -457,3 +473,52 @@ class Solution(models.Model):
             pressure=self.pressure,
             pH=self.pH
         )
+
+class Rol(models.Model):
+    name = models.CharField(blank=True,max_length=100)
+    permissions = models.ManyToManyField(
+        Permission,
+        verbose_name=_('permissions'),
+        blank=True,
+    )
+    class Meta:
+        verbose_name = _('Rol')
+        verbose_name_plural = _('Rols')
+
+    def __str__(self):
+        return self.name
+
+class ProfilePermission(models.Model):
+    profile = models.ForeignKey(Profile, verbose_name=_("Profile"), blank=True, null=True, on_delete=models.CASCADE)
+    laboratories = models.ForeignKey(Laboratory, verbose_name=_("Laboratories"), blank=True, null=True, on_delete=models.CASCADE)
+    rol = models.ManyToManyField(Rol, blank=True, verbose_name=_("Rol"))
+
+    def __str__(self):
+        return '%s' % (self.profile,)
+
+
+class ObjectLogChange(models.Model):
+    object = models.ForeignKey(Object, db_constraint=False, on_delete=models.DO_NOTHING)
+    laboratory = models.ForeignKey(Laboratory, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, db_constraint=False, on_delete=models.DO_NOTHING)
+    old_value = models.FloatField(default=0)
+    new_value = models.FloatField(default=0)
+    diff_value = models.FloatField(default=0)
+    update_time = models.DateTimeField(auto_now_add=True)
+    precursor = models.BooleanField(default=False)
+    measurement_unit = catalog.GTForeignKey(Catalog, related_name="logmeasurementunit", on_delete=models.DO_NOTHING,
+                                            verbose_name=_('Measurement unit'), key_name="key", key_value='units')
+
+
+class BlockedListNotification(models.Model):
+    laboratory = models.ForeignKey(
+        Laboratory, on_delete=models.CASCADE, verbose_name=_("Laboratory"))
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name=_("User"))
+    object = models.ForeignKey(Object, on_delete=models.CASCADE, verbose_name=_("Object"))
+
+    class Meta:
+        verbose_name = _('Blocked List Notification')
+        verbose_name_plural = _('Bloked List Notifications')
+    
+    def __str__(self):
+        return f"{self.object}: {self.laboratory}: {self.user}" 

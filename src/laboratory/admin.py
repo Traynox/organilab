@@ -28,6 +28,8 @@ class CustomConfigForm(ConstanceForm):
 class ConfigAdmin(ConstanceAdmin):
     change_list_form = CustomConfigForm
 
+class RolAdmin(admin.ModelAdmin):
+    filter_horizontal = ['permissions']
 
 admin.site.unregister([Config])
 admin.site.register([Config], ConfigAdmin)
@@ -43,6 +45,9 @@ admin.site.register(models.Object, Object_Admin)
 admin.site.register(models.ShelfObject)
 admin.site.register(models.Solution)
 admin.site.register(models.Catalog)
+admin.site.register(models.BlockedListNotification)
+admin.site.register(models.Rol, RolAdmin)
+admin.site.register(models.ProfilePermission)
 
 
 admin.site.register(models.OrganizationStructure,

@@ -35,9 +35,22 @@ urlpatterns = [
     url(r'label_template', views.label_template, name='label_template'),
     # sga/label_editor/
     url(r'label_editor', views.label_editor, name='label_editor'),
-    # sga/getSubstanceInformation/
-    # url(r'getSubstanceInformation', views.getSubstanceInformation, name='getSubstanceInformation'),
     # sga/editor
     url(r'editor', editor, name='editor'),
     url(r'download/', render_pdf_view, name='download'),
+    # sga/prudence
+    url(r'prudence', views.get_prudence_advice, name='prudence'),
+    # sga/get_danger_indication
+    url(r'danger', views.get_danger_indication, name='get_danger_indication'),
+    # sga/get_get_templateList
+    url(r'getList', views.getTemplates, name='getList'),
+
+    url(r'add_personal', views.create_personal_template, name='add_personal'),
+    url(r'edit_personal/(?P<pk>\d+)$', views.edit_personal_template, name='edit_personal'),
+    url(r'show_personal/(?P<pk>\d+)$', views.show_preview, name='show_personal'),
+
+    url(r'getData', views.delete_personal, name='getData'),
+    url(r'get_pdf/(?P<pk>\d+)$', views.render_user_pdf, name='get_pdf'),
+    url(r'get_images', views.get_files, name='get_images'),
+
 ]

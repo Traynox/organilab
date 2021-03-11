@@ -6,20 +6,23 @@ Created on 26/12/2016
 '''
 
 from django import forms
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.template.loader import render_to_string
 from django.urls.base import reverse_lazy
 from django.utils.decorators import method_decorator
 from django_ajax.decorators import ajax
 from django_ajax.mixin import AJAXMixin
-
-from laboratory.models import ShelfObject, Shelf
-
+from djgentelella.forms.forms import CustomForm
+from djgentelella.widgets import core
+from laboratory.models import ShelfObject, Shelf, Object
 from .djgeneric import CreateView, UpdateView, DeleteView
-from ajax_select.fields import AutoCompleteSelectField
 from django.utils.translation import ugettext_lazy as _
+from djgentelella.widgets.selects import AutocompleteSelect
+from ..logsustances import log_object_change
+from django.views.generic.edit import FormView
+from laboratory.forms import ReservationModalForm
+from laboratory.decorators import has_lab_assigned
 
-from laboratory.decorators import user_group_perms
 
 @login_required
 def list_shelfobject_render(request, shelf=0, row=0, col=0, lab_pk=None):
@@ -43,6 +46,15 @@ def list_shelfobject_render(request, shelf=0, row=0, col=0, lab_pk=None):
         })
 
 
+@method_decorator(permission_required('reservations.add_reservation'), name='dispatch')
+class ShelfObjectReservationModal(FormView):
+    template_name = 'laboratory/reservation_modal.html'
+    form_class = ReservationModalForm
+    success_message = "Reservation done successfully"
+    success_url = "/"
+
+
+
 @login_required
 @ajax
 def list_shelfobject(request, lab_pk):
@@ -56,30 +68,28 @@ def list_shelfobject(request, lab_pk):
     }
 
 
-class ShelfObjectForm(forms.ModelForm):
+class ShelfObjectForm(CustomForm, forms.ModelForm):
     col = forms.IntegerField(widget=forms.HiddenInput)
     row = forms.IntegerField(widget=forms.HiddenInput)
-    object = AutoCompleteSelectField('objects',  required=False, label=_("Reactive/Material/Equipment"), help_text=_("Search by name, code or CAS number"))
+    object = forms.ModelChoiceField(
+        queryset=Object.objects.all(),
+        widget=AutocompleteSelect('objectsearch'),
+        label=_("Reactive/Material/Equipment"),
+        help_text=_("Search by name, code or CAS number")
+    )
 
-    def clean_object(self):
-        if hasattr(super(ShelfObjectForm, self), 'clean_object'):
-            data=super(ShelfObjectForm, self).clean_object()
-        else:
-            data = self.cleaned_data['object']
-        if not data:
-            raise forms.ValidationError(_("Object is required"))
-        return data
-        
     class Meta:
         model = ShelfObject
         fields = "__all__"
         widgets = {
             'shelf': forms.HiddenInput,
-            
+            'quantity': core.TextInput,
+            'limit_quantity': core.TextInput,
+            'measurement_unit': core.Select
         }
 
 
-class ShelfObjectFormUpdate(forms.ModelForm):
+class ShelfObjectFormUpdate(CustomForm, forms.ModelForm):
     col = forms.IntegerField(widget=forms.HiddenInput, required=False)
     row = forms.IntegerField(widget=forms.HiddenInput, required=False)
 
@@ -88,11 +98,14 @@ class ShelfObjectFormUpdate(forms.ModelForm):
         fields = ['shelf', 'quantity', 'limit_quantity', 'measurement_unit']
         widgets = {
             'shelf': forms.HiddenInput,
+            'quantity': core.TextInput,
+            'limit_quantity': core.TextInput,
+            'measurement_unit': core.Select
         }
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.add_shelfobject'), name='dispatch')
+@method_decorator(has_lab_assigned(), name="dispatch")
+@method_decorator(permission_required('laboratory.add_shelfobject'), name='dispatch')
 class ShelfObjectCreate(AJAXMixin, CreateView):
     model = ShelfObject
     form_class = ShelfObjectForm
@@ -103,6 +116,7 @@ class ShelfObjectCreate(AJAXMixin, CreateView):
 
     def form_valid(self, form):
         self.object = form.save()
+        log_object_change(self.request.user, self.lab, self.object, 0, self.object.quantity, create=True)
         row = form.cleaned_data['row']
         col = form.cleaned_data['col']
         return {
@@ -121,8 +135,8 @@ class ShelfObjectCreate(AJAXMixin, CreateView):
         return kwargs
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.change_shelfobject'), name='dispatch')
+@method_decorator(has_lab_assigned(), name="dispatch")
+@method_decorator(permission_required('laboratory.change_shelfobject'), name='dispatch')
 class ShelfObjectEdit(AJAXMixin, UpdateView):
     model = ShelfObject
     form_class = ShelfObjectFormUpdate
@@ -132,7 +146,11 @@ class ShelfObjectEdit(AJAXMixin, UpdateView):
         return reverse_lazy('laboratory:list_shelf', args=(self.lab,))
 
     def form_valid(self, form):
+
+        old = self.model.objects.filter(pk=self.object.id).values('quantity')[0]['quantity']
         self.object = form.save()
+        log_object_change(self.request.user, self.lab, self.object, old, self.object.quantity, create=False)
+
         row = form.cleaned_data['row']
         col = form.cleaned_data['col']
         return {
@@ -152,8 +170,8 @@ class ShelfObjectEdit(AJAXMixin, UpdateView):
         return kwargs
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.change_shelfobject'), name='dispatch')
+@method_decorator(has_lab_assigned(), name="dispatch")
+@method_decorator(permission_required('laboratory.change_shelfobject'), name='dispatch')
 class ShelfObjectSearchUpdate(AJAXMixin, UpdateView):
     model = ShelfObject
     form_class = ShelfObjectFormUpdate
@@ -175,7 +193,10 @@ class ShelfObjectSearchUpdate(AJAXMixin, UpdateView):
 
     def form_valid(self, form):
         self.fvalid = True
-        return UpdateView.form_valid(self, form)
+        old = self.model.objects.filter(pk=self.object.id).values('quantity')[0]['quantity']
+        response = UpdateView.form_valid(self, form)
+        log_object_change(self.request.user, self.lab, self.object, old, self.object.quantity, create=False)
+        return response
 
     def post(self, request, *args, **kwargs):
         self.fvalid = False
@@ -198,8 +219,8 @@ class ShelfObjectSearchUpdate(AJAXMixin, UpdateView):
         }
 
 
-@method_decorator(login_required, name='dispatch')
-@method_decorator(user_group_perms(perm='laboratory.delete_shelfobject'), name='dispatch')
+@method_decorator(has_lab_assigned(), name="dispatch")
+@method_decorator(permission_required('laboratory.delete_shelfobject'), name='dispatch')
 class ShelfObjectDelete(AJAXMixin, DeleteView):
     model = ShelfObject
     success_url = "/"
@@ -222,8 +243,7 @@ class ShelfObjectDelete(AJAXMixin, DeleteView):
         DeleteView.post(self, request, *args, **kwargs)
         self.row = request.POST.get("row")
         self.col = request.POST.get("col")
-        
-        DeleteView.post
+
 
         return {
             'inner-fragments': {

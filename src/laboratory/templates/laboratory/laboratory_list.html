@@ -2,9 +2,6 @@
 {% load i18n laboratory %}
 
 {% block content %}
-  {%  has_perms "laboratory.change_laboratory" as perm_change_laboratory %}
-  {%  has_perms "laboratory.delete_laboratory" as perm_delete_laboratory %}
-
   <label for="searchbox">Buscar Laboratorio</label>
   <form id="searchform"  method="get" action="" accept-charset="utf-8">
     <div class="row">
@@ -21,7 +18,7 @@
   <br>
   <div class="row">
     {% for lab in object_list %}
-    {% include 'laboratory/lab_card.html' with lab=lab  perm_change_laboratory=perm_change_laboratory  perm_change_laboratory=perm_change_laboratory %}
+      {% include 'laboratory/lab_card.html' with lab=lab %}
     {% endfor %}
   </div>
 
@@ -45,7 +42,20 @@
         {% endif %}
       </ul>
     </nav>
-
   {% endif %}
-
+{% endblock %}
+<!-- Workaround to avoid change ui with django form -->
+{% block js %}
+  <script>
+    window.onload = function(){
+      try{
+        var url_string = (window.location.href).toLowerCase();
+        var url = new URL(url_string);
+        var search_fil = url.searchParams.get("search_fil");
+        document.getElementById('searchbox').value = search_fil;
+      }catch(err){
+        //do nothing
+      }
+    }
+  </script>
 {% endblock %}

@@ -3,24 +3,23 @@ from django.contrib.auth.models import Group, User
 from djgentelella.forms.forms import CustomForm
 
 from sga.models import DangerIndication
-from .models import Laboratory
+from .models import Laboratory, Object, Profile,Rol,ProfilePermission
+from reservations_management.models import ReservedProducts
 from django.contrib.auth.forms import UserCreationForm
-from ajax_select.fields import AutoCompleteSelectMultipleField
+from djgentelella.widgets.selects import AutocompleteSelectMultipleBase,AutocompleteSelectBase
 from django.utils.translation import ugettext_lazy as _
 from laboratory.models import OrganizationStructure
+from djgentelella.forms.forms import GTForm
 from djgentelella.widgets import core as genwidgets
+from django.forms import ModelForm
 
-class ObjectSearchForm(forms.Form):
-    q = AutoCompleteSelectMultipleField(
-        'objects', required=False, help_text=_("Search by name, code or CAS number"))
+
+class ObjectSearchForm(CustomForm, forms.Form):
+    q = forms.ModelMultipleChoiceField(queryset=Object.objects.all(), widget=genwidgets.SelectMultiple,
+                                       required=False, label=_("Search by name, code or CAS number"))
+
     all_labs = forms.BooleanField(
-        widget=forms.CheckboxInput, required=False, label=_("All labs"))
-
-
-class UserSearchForm(forms.Form):
-    user = AutoCompleteSelectMultipleField(
-        'users', required=False, help_text=_("Search by username, name or lastname"))
-    action = forms.CharField(widget=forms.HiddenInput)
+        widget=genwidgets.YesNoInput, required=False, label=_("All labs"))
 
 
 class UserCreate(UserCreationForm):
@@ -73,3 +72,32 @@ class SearchUserForm(CustomForm):
         users_list = kwargs.pop('users_list')
         super(SearchUserForm, self).__init__(*args, **kwargs)
         self.fields['user'].queryset = User.objects.all().exclude(pk__in=users_list)
+
+
+class ProfilePermissionForm(GTForm):
+    user = forms.ModelChoiceField(widget=genwidgets.Select, queryset=User.objects.all(), required=True, label=_("User"))
+    rol = forms.ModelMultipleChoiceField(queryset=Rol.objects.all(), required=False, widget=genwidgets.SelectMultiple, label=_('Roles'))
+
+    def __init__(self, *args, **kwargs):
+        users_list = kwargs.pop('users_list')
+        super(ProfilePermissionForm, self).__init__(*args, **kwargs)
+        self.fields['user'].queryset = User.objects.all().exclude(pk__in=users_list)
+
+
+class ReservationModalForm(GTForm, ModelForm):
+
+    class Meta:
+        model = ReservedProducts
+        fields = ['amount_required','initial_date', 'final_date']
+        widgets = {
+            'initial_date': genwidgets.DateTimeInput,
+            'final_date': genwidgets.DateTimeInput,
+            'amount_required': genwidgets.NumberInput
+        }
+
+class ProfileForm(forms.Form):
+    first_name = forms.CharField(widget=genwidgets.TextInput, label=_("Name"))
+    last_name = forms.CharField(widget=genwidgets.TextInput, label=_("Last Name"))
+    id_card = forms.CharField(widget=genwidgets.TextInput, label=_("Id Card"))
+    job_position = forms.CharField(widget=genwidgets.TextInput, label=_("Job Position"))
+    profile_id = forms.CharField(widget=forms.HiddenInput())

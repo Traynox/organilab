@@ -1,7 +1,6 @@
 
 from django.db.models.query_utils import Q
-from laboratory.models import Laboratory,OrganizationStructure
- 
+from laboratory.models import Laboratory, OrganizationStructure, OrganizationUserManagement
 
 
 def check_group_has_perm(group,codename):
@@ -13,13 +12,14 @@ def check_group_has_perm(group,codename):
 def sum_ancestors_group(user_org,lab_org,perm):        
     lab_parant = lab_org.get_ancestors(ascending=True, include_self=True) 
     user_org = user_org.first()  # first have the first org 
-    for org in  lab_parant:
-        if org.level >= user_org.level  :
-            group = org.group  if hasattr(org, 'group') else None
-            if group :                
+    for org in lab_parant:
+        if org.level >= user_org.level:
+            group = org.group if hasattr(org, 'group') else None
+            if group:
                 if check_group_has_perm(group,perm):
                     return True
-    return False        
+    return False
+
 def check_user_has_perm(user, perm):
     return bool(user.has_perm(perm))
 
@@ -50,7 +50,7 @@ def check_lab_group_has_perm(user,lab,perm,callback_filter=filter_laboratorist_p
     
     # django admins        
     if user.is_superuser:
-        return True;
+        return True
 
     if not user.is_authenticated:
         return False 
@@ -67,19 +67,25 @@ def check_lab_group_has_perm(user,lab,perm,callback_filter=filter_laboratorist_p
         if sum_ancestors_group(user_org,lab_org,perm): # check ancestor perms
                 return True
 
-
-    user_perm = check_user_has_perm(user,perm) if perm else False  # check if user has perms to do action
-    labs = callback_filter(user,user_org)                                                                          
-
-    if not False in [user_perm,lab in labs]: # User have perms to all action level
-            return True
-    return False    
+    user_perm = check_user_has_perm(user,perm)   # check if user has perms to do action
+    labs = callback_filter(user,user_org)
+    return all([user_perm,lab in labs]) # User have perms to all action level
 
     
 check_lab_perms = check_lab_group_has_perm
 
 
+def get_users_form_organization(rootpk, userfilters={}):
+    query=OrganizationUserManagement.objects.filter(
+        list(OrganizationStructure.objects.filter(pk=rootpk).get_descendants(include_self=True).value_list('pk', flat=True))
+    )
+    return query.values('users')
 
+
+def get_laboratories_from_organization(rootpk):
+    return Laboratory.objects.filter(organization__in=OrganizationStructure.objects.filter(
+        pk=rootpk).get_descendants(include_self=True)
+                              ).distinct()
 
 def get_cas(object, default=None):
     result = default
